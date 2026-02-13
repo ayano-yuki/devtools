@@ -8,7 +8,7 @@ chrome.devtools.panels.create("My Panel", null, myPanelHTML, (panel) => {
       const { url, method, headers } = request.request
       const { status } = request.response
 
-      reqElem += `
+      reqElem = `
         <div class="request" style="margin-top: 20px;">
           <div class="request__url">${url}</div>
           <div class="request__method">${method}</div>
