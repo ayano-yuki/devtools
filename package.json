@@ -24,6 +24,9 @@
     "typescript": "5.3.3"
   },
   "manifest": {
+    "permissions": [
+      "debugger"
+    ],
     "host_permissions": [
       "https://*/*"
     ]

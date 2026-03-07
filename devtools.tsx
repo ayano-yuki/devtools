@@ -1,29 +1,37 @@
 import myPanelHTML from "url:~/devtools/panel.html"
+import { PerformancePanelController } from "~/devtools/performance-panel-controller"
 
-chrome.devtools.panels.create("My Panel", null, myPanelHTML, (panel) => {
+let panelController: PerformancePanelController | null = null
+
+chrome.devtools.panels.create("Performance", null, myPanelHTML, (panel) => {
   panel.onShown.addListener((panelWindow) => {
-    let reqElem = ``
+    if (panelController) {
+      return
+    }
 
-    chrome.devtools.network.onRequestFinished.addListener((request) => {
-      const { url, method, headers } = request.request
-      const { status } = request.response
-
-      reqElem = `
-        <div class="request" style="margin-top: 20px;">
-          <div class="request__url">${url}</div>
-          <div class="request__method">${method}</div>
-          <div class="request__status">${status}</div>
-          <div class="request__headers">${JSON.stringify(headers)}</div>
-        </div>
-      `
-
-      panelWindow.document.getElementById("panel").innerHTML = `
-        <div class="requests">
-          ${reqElem}
-        </div>
-      `
-    })
+    panelController = new PerformancePanelController(
+      panelWindow,
+      chrome.devtools.inspectedWindow.tabId
+    )
+    void panelController.start()
   })
+
+  panel.onHidden.addListener(() => {
+    if (!panelController) {
+      return
+    }
+    void panelController.stop()
+    panelController = null
+  })
+})
+
+globalThis.addEventListener("beforeunload", () => {
+  if (!panelController) {
+    return
+  }
+
+  void panelController.stop()
+  panelController = null
 })
 
 function IndexDevtools() {
