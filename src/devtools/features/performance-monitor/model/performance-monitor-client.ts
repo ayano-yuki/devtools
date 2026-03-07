@@ -1,4 +1,8 @@
-import type { MetricSnapshot } from "~/devtools/performance-types"
+import {
+  SAMPLE_INTERVAL_MS,
+  type MetricSnapshot
+} from "~/src/devtools/entities/performance/model/metrics"
+import { clamp } from "~/src/devtools/shared/lib/math"
 
 type PerformanceMetric = {
   name: string
@@ -10,31 +14,12 @@ type PerformanceMetricsResponse = {
 }
 
 type DomCountersResponse = {
-  documents: number
   nodes: number
-  jsEventListeners: number
 }
 
 type MetricMap = Record<string, number>
 
 const DEBUGGER_PROTOCOL_VERSION = "1.3"
-const DEFAULT_POLL_INTERVAL_MS = 1000
-
-const GPU_METRIC_CANDIDATES = [
-  "GpuMemoryUsedKB",
-  "GpuMemoryUsageKB",
-  "GPUMemoryUsedKB",
-  "GPUMemoryUsageKB",
-  "GpuMemoryUsedMB",
-  "GpuMemoryUsageMB",
-  "GPUMemoryUsedMB",
-  "GPUMemoryUsageMB",
-  "GpuMemoryUsed",
-  "GpuMemoryUsage",
-  "GPUMemoryUsed",
-  "GPUMemoryUsage",
-  "GPU"
-]
 
 const CPU_COUNTER_CANDIDATES = ["TaskDuration", "ThreadTime", "ProcessTime"]
 
@@ -69,37 +54,7 @@ const toErrorMessage = (error: unknown): string => {
   return "Unknown error"
 }
 
-const clamp = (value: number, min: number, max: number): number =>
-  Math.min(Math.max(value, min), max)
-
-const normalizeGpuMetric = (metrics: MetricMap): number | null => {
-  for (const candidate of GPU_METRIC_CANDIDATES) {
-    const rawValue = metrics[candidate]
-    if (typeof rawValue !== "number" || !Number.isFinite(rawValue)) {
-      continue
-    }
-
-    const normalizedName = candidate.toLowerCase()
-    if (normalizedName.includes("kb")) {
-      return rawValue / 1024
-    }
-    if (normalizedName.includes("mb")) {
-      return rawValue
-    }
-
-    if (rawValue > 1_048_576) {
-      return rawValue / (1024 * 1024)
-    }
-    if (rawValue > 8192) {
-      return rawValue / 1024
-    }
-    return rawValue
-  }
-
-  return null
-}
-
-export class PerformanceMetricsClient {
+export class PerformanceMonitorClient {
   private readonly target: chrome.debugger.Debuggee
   private pollTimer: ReturnType<typeof setInterval> | null = null
   private isAttached = false
@@ -110,8 +65,7 @@ export class PerformanceMetricsClient {
   constructor(
     tabId: number,
     private readonly onSample: (snapshot: MetricSnapshot) => void,
-    private readonly onError: (message: string) => void,
-    private readonly pollIntervalMs: number = DEFAULT_POLL_INTERVAL_MS
+    private readonly onError: (message: string) => void
   ) {
     this.target = { tabId }
   }
@@ -127,12 +81,10 @@ export class PerformanceMetricsClient {
       await this.collectAndPublish()
       this.pollTimer = setInterval(() => {
         void this.collectAndPublish()
-      }, this.pollIntervalMs)
+      }, SAMPLE_INTERVAL_MS)
     } catch (error) {
       await this.stop()
-      this.onError(
-        `Failed to start performance monitoring. ${toErrorMessage(error)}`
-      )
+      this.onError(`Failed to start performance monitoring. ${toErrorMessage(error)}`)
     }
   }
 
@@ -152,7 +104,7 @@ export class PerformanceMetricsClient {
     try {
       await this.sendCommand("Performance.disable")
     } catch {
-      // Ignore disable errors if the target changed during detach.
+      // Ignore disable errors if target has already changed.
     }
 
     try {
@@ -172,10 +124,7 @@ export class PerformanceMetricsClient {
       const snapshot = await this.collectSnapshot()
       this.onSample(snapshot)
     } catch (error) {
-      this.onError(
-        `Failed to collect performance metrics. ${toErrorMessage(error)}`
-      )
-      await this.stop()
+      this.onError(`Failed to collect performance metrics. ${toErrorMessage(error)}`)
     } finally {
       this.isPolling = false
     }
@@ -184,29 +133,18 @@ export class PerformanceMetricsClient {
   private async collectSnapshot(): Promise<MetricSnapshot> {
     const [performanceResponse, domCountersResponse] = await Promise.all([
       this.sendCommand<PerformanceMetricsResponse>("Performance.getMetrics"),
-      this.sendCommand<DomCountersResponse>("Memory.getDOMCounters").catch(
-        () => null
-      )
+      this.sendCommand<DomCountersResponse>("Memory.getDOMCounters").catch(() => null)
     ])
 
     const metricsMap = toMetricsMap(performanceResponse.metrics)
     const jsHeapBytes = pickMetric(metricsMap, ["JSHeapUsedSize"])
-    const documents =
-      pickMetric(metricsMap, ["Documents"]) ?? domCountersResponse?.documents
     const nodes = pickMetric(metricsMap, ["Nodes"]) ?? domCountersResponse?.nodes
-    const listeners =
-      pickMetric(metricsMap, ["JSEventListeners"]) ??
-      domCountersResponse?.jsEventListeners
-    const gpu = normalizeGpuMetric(metricsMap)
     const cpu = this.computeCpuUsage(metricsMap)
 
     return {
       timestamp: Date.now(),
       jsHeap: jsHeapBytes === null ? null : jsHeapBytes / (1024 * 1024),
-      documents: documents ?? null,
       nodes: nodes ?? null,
-      listeners: listeners ?? null,
-      gpu,
       cpu
     }
   }
@@ -227,17 +165,17 @@ export class PerformanceMetricsClient {
       return null
     }
 
-    const cpuCounterDelta = cpuCounter - this.lastCpuCounter
+    const counterDelta = cpuCounter - this.lastCpuCounter
     const timestampDelta = timestamp - this.lastCpuTimestamp
 
     this.lastCpuCounter = cpuCounter
     this.lastCpuTimestamp = timestamp
 
-    if (cpuCounterDelta < 0 || timestampDelta <= 0) {
+    if (counterDelta < 0 || timestampDelta <= 0) {
       return null
     }
 
-    return clamp((cpuCounterDelta / timestampDelta) * 100, 0, 100)
+    return clamp((counterDelta / timestampDelta) * 100, 0, 100)
   }
 
   private async attachDebugger(): Promise<void> {

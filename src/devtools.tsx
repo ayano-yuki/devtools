@@ -1,17 +1,18 @@
 import myPanelHTML from "url:~/devtools/panel.html"
-import { PerformancePanelController } from "~/devtools/performance-panel-controller"
+import { DevtoolsPanelController } from "~/src/devtools/pages/devtools-panel/model/devtools-panel-controller"
 
-let panelController: PerformancePanelController | null = null
+let panelController: DevtoolsPanelController | null = null
 
-chrome.devtools.panels.create("Performance", null, myPanelHTML, (panel) => {
+chrome.devtools.panels.create("DEV", null, myPanelHTML, (panel) => {
   panel.onShown.addListener((panelWindow) => {
     if (panelController) {
+      void panelController.refresh()
       return
     }
 
-    panelController = new PerformancePanelController(
+    panelController = new DevtoolsPanelController(
       panelWindow,
-      chrome.devtools.inspectedWindow.tabId
+      () => chrome.devtools.inspectedWindow.tabId
     )
     void panelController.start()
   })
@@ -34,8 +35,6 @@ globalThis.addEventListener("beforeunload", () => {
   panelController = null
 })
 
-function IndexDevtools() {
-  return <></>
-}
+const DevtoolsEntry = () => null
 
-export default IndexDevtools
+export default DevtoolsEntry
