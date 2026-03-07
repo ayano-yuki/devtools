@@ -19,9 +19,32 @@ type DomCountersResponse = {
 
 type MetricMap = Record<string, number>
 
+export type NetworkThrottlingConfig = {
+  offline: boolean
+  latencyMs: number
+  downloadKbps: number | null
+  uploadKbps: number | null
+}
+
+export type MonitorThrottlingConfig = {
+  cpuRate: number
+  network: NetworkThrottlingConfig
+}
+
 const DEBUGGER_PROTOCOL_VERSION = "1.3"
 
 const CPU_COUNTER_CANDIDATES = ["TaskDuration", "ThreadTime", "ProcessTime"]
+const NO_THROUGHPUT_LIMIT = -1
+const BYTES_PER_KILOBIT = 1000 / 8
+const DEFAULT_THROTTLING_CONFIG: MonitorThrottlingConfig = {
+  cpuRate: 1,
+  network: {
+    offline: false,
+    latencyMs: 0,
+    downloadKbps: null,
+    uploadKbps: null
+  }
+}
 
 const pickMetric = (metrics: MetricMap, names: string[]): number | null => {
   for (const name of names) {
@@ -54,6 +77,14 @@ const toErrorMessage = (error: unknown): string => {
   return "Unknown error"
 }
 
+const toThroughputBytesPerSecond = (kbps: number | null): number => {
+  if (kbps === null) {
+    return NO_THROUGHPUT_LIMIT
+  }
+
+  return Math.max(1, Math.round(kbps * BYTES_PER_KILOBIT))
+}
+
 export class PerformanceMonitorClient {
   private readonly target: chrome.debugger.Debuggee
   private pollTimer: ReturnType<typeof setInterval> | null = null
@@ -70,21 +101,26 @@ export class PerformanceMonitorClient {
     this.target = { tabId }
   }
 
-  public async start(): Promise<void> {
+  public async start(
+    throttlingConfig: MonitorThrottlingConfig = DEFAULT_THROTTLING_CONFIG
+  ): Promise<boolean> {
     if (this.pollTimer !== null) {
-      return
+      return true
     }
 
     try {
       await this.attachDebugger()
       await this.sendCommand("Performance.enable")
+      await this.applyThrottling(throttlingConfig)
       await this.collectAndPublish()
       this.pollTimer = setInterval(() => {
         void this.collectAndPublish()
       }, SAMPLE_INTERVAL_MS)
+      return true
     } catch (error) {
       await this.stop()
       this.onError(`Failed to start performance monitoring. ${toErrorMessage(error)}`)
+      return false
     }
   }
 
@@ -100,6 +136,8 @@ export class PerformanceMonitorClient {
     if (!this.isAttached) {
       return
     }
+
+    await this.resetThrottling()
 
     try {
       await this.sendCommand("Performance.disable")
@@ -176,6 +214,70 @@ export class PerformanceMonitorClient {
     }
 
     return clamp((counterDelta / timestampDelta) * 100, 0, 100)
+  }
+
+  private async applyThrottling(
+    throttlingConfig: MonitorThrottlingConfig
+  ): Promise<void> {
+    await this.applyCpuThrottling(throttlingConfig.cpuRate)
+    await this.applyNetworkThrottling(throttlingConfig.network)
+  }
+
+  private async applyCpuThrottling(rate: number): Promise<void> {
+    try {
+      await this.sendCommand("Emulation.setCPUThrottlingRate", { rate })
+    } catch (error) {
+      this.onError(
+        `Failed to apply CPU throttling (${rate.toFixed(1)}x). ${toErrorMessage(error)}`
+      )
+    }
+  }
+
+  private async applyNetworkThrottling(
+    network: NetworkThrottlingConfig
+  ): Promise<void> {
+    try {
+      await this.sendCommand("Network.enable")
+    } catch (error) {
+      this.onError(`Failed to enable network throttling. ${toErrorMessage(error)}`)
+      return
+    }
+
+    try {
+      await this.sendCommand("Network.emulateNetworkConditions", {
+        offline: network.offline,
+        latency: network.latencyMs,
+        downloadThroughput: toThroughputBytesPerSecond(network.downloadKbps),
+        uploadThroughput: toThroughputBytesPerSecond(network.uploadKbps)
+      })
+    } catch (error) {
+      this.onError(`Failed to apply network throttling. ${toErrorMessage(error)}`)
+    }
+  }
+
+  private async resetThrottling(): Promise<void> {
+    try {
+      await this.sendCommand("Emulation.setCPUThrottlingRate", { rate: 1 })
+    } catch {
+      // Best effort cleanup.
+    }
+
+    try {
+      await this.sendCommand("Network.emulateNetworkConditions", {
+        offline: false,
+        latency: 0,
+        downloadThroughput: NO_THROUGHPUT_LIMIT,
+        uploadThroughput: NO_THROUGHPUT_LIMIT
+      })
+    } catch {
+      // Ignore if network emulation was never enabled.
+    }
+
+    try {
+      await this.sendCommand("Network.disable")
+    } catch {
+      // Ignore if network domain is unavailable.
+    }
   }
 
   private async attachDebugger(): Promise<void> {

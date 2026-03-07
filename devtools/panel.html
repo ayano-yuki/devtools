@@ -43,6 +43,75 @@
         color: #475569;
       }
 
+      .perf-controls {
+        margin-top: 12px;
+        border: 1px solid #dbe3ef;
+        border-radius: 12px;
+        background: #ffffff;
+        padding: 10px 12px;
+      }
+
+      .perf-controls__row {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        margin-bottom: 10px;
+      }
+
+      .perf-controls__group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .perf-controls__label {
+        font-size: 11px;
+        color: #475569;
+      }
+
+      .perf-controls__input {
+        box-sizing: border-box;
+        width: 100%;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        padding: 6px 8px;
+        font-size: 12px;
+        color: #0f172a;
+      }
+
+      .perf-controls__checkbox {
+        margin-right: 6px;
+      }
+
+      .perf-controls__actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      .perf-button {
+        border: 0;
+        border-radius: 8px;
+        padding: 7px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .perf-button--primary {
+        background: #2563eb;
+        color: #ffffff;
+      }
+
+      .perf-button--danger {
+        background: #dc2626;
+        color: #ffffff;
+      }
+
+      .perf-button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
       .perf-dashboard__error {
         margin-top: 10px;
         border-radius: 10px;
@@ -118,6 +187,71 @@
         <p id="statusText" class="perf-dashboard__subtitle">
           Sampling every 0.1s, waiting for first sample...
         </p>
+        <form id="throttleForm" class="perf-controls">
+          <div class="perf-controls__row">
+            <label class="perf-controls__group">
+              <span class="perf-controls__label">CPU throttle (x)</span>
+              <input
+                id="cpuRateInput"
+                class="perf-controls__input"
+                type="number"
+                min="1"
+                step="0.1"
+                value="1" />
+            </label>
+            <label class="perf-controls__group">
+              <span class="perf-controls__label">Latency (ms)</span>
+              <input
+                id="latencyInput"
+                class="perf-controls__input"
+                type="number"
+                min="0"
+                step="1"
+                value="0" />
+            </label>
+            <label class="perf-controls__group">
+              <span class="perf-controls__label">Download (kbps, 0=unlimited)</span>
+              <input
+                id="downloadInput"
+                class="perf-controls__input"
+                type="number"
+                min="0"
+                step="1"
+                value="0" />
+            </label>
+            <label class="perf-controls__group">
+              <span class="perf-controls__label">Upload (kbps, 0=unlimited)</span>
+              <input
+                id="uploadInput"
+                class="perf-controls__input"
+                type="number"
+                min="0"
+                step="1"
+                value="0" />
+            </label>
+          </div>
+          <div class="perf-controls__actions">
+            <label class="perf-controls__label">
+              <input
+                id="offlineInput"
+                class="perf-controls__checkbox"
+                type="checkbox" />
+              Offline
+            </label>
+            <button
+              id="startButton"
+              class="perf-button perf-button--primary"
+              type="submit">
+              Start
+            </button>
+            <button
+              id="stopButton"
+              class="perf-button perf-button--danger"
+              type="button">
+              Stop
+            </button>
+          </div>
+        </form>
         <p id="errorText" class="perf-dashboard__error" hidden></p>
       </header>
       <div id="metricsGrid" class="perf-grid">
