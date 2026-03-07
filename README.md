@@ -41,6 +41,18 @@ pnpm dev
 - `pnpm build`: 本番ビルド（`build/chrome-mv3-prod`）
 - `pnpm package`: 配布用パッケージ作成
 
+## GitHub ActionsでZIPリリース
+
+ボタン実行でZIP付きのGitHub Releaseを作成できます。
+
+1. GitHubの`Actions`タブで`Release ZIP`ワークフローを開く
+2. `Run workflow`を押し、`tag`（例: `v0.1.0`）を入力して実行
+3. 完了後、`Releases`に`build/chrome-mv3-prod.zip`が添付されたリリースが作成される
+
+補足:
+- ワークフロー定義: `.github/workflows/release.yml`
+- リポジトリ設定で`GITHUB_TOKEN`に`Contents: Read and write`権限が必要です。
+
 ## プロジェクト構成
 
 ```text
