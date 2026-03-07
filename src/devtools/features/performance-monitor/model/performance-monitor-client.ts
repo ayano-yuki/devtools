@@ -36,15 +36,6 @@ const DEBUGGER_PROTOCOL_VERSION = "1.3"
 const CPU_COUNTER_CANDIDATES = ["TaskDuration", "ThreadTime", "ProcessTime"]
 const NO_THROUGHPUT_LIMIT = -1
 const BYTES_PER_KILOBIT = 1000 / 8
-const DEFAULT_THROTTLING_CONFIG: MonitorThrottlingConfig = {
-  cpuRate: 1,
-  network: {
-    offline: false,
-    latencyMs: 0,
-    downloadKbps: null,
-    uploadKbps: null
-  }
-}
 
 const pickMetric = (metrics: MetricMap, names: string[]): number | null => {
   for (const name of names) {
@@ -101,9 +92,7 @@ export class PerformanceMonitorClient {
     this.target = { tabId }
   }
 
-  public async start(
-    throttlingConfig: MonitorThrottlingConfig = DEFAULT_THROTTLING_CONFIG
-  ): Promise<boolean> {
+  public async start(): Promise<boolean> {
     if (this.pollTimer !== null) {
       return true
     }
@@ -111,7 +100,6 @@ export class PerformanceMonitorClient {
     try {
       await this.attachDebugger()
       await this.sendCommand("Performance.enable")
-      await this.applyThrottling(throttlingConfig)
       await this.collectAndPublish()
       this.pollTimer = setInterval(() => {
         void this.collectAndPublish()
@@ -150,6 +138,24 @@ export class PerformanceMonitorClient {
     } catch {
       // Best effort cleanup.
     }
+  }
+
+  public async setThrottling(
+    throttlingConfig: MonitorThrottlingConfig
+  ): Promise<void> {
+    if (!this.isAttached) {
+      return
+    }
+
+    await this.applyThrottling(throttlingConfig)
+  }
+
+  public async clearThrottling(): Promise<void> {
+    if (!this.isAttached) {
+      return
+    }
+
+    await this.resetThrottling()
   }
 
   private async collectAndPublish(): Promise<void> {

@@ -1,33 +1,62 @@
-This is a [Plasmo extension](https://docs.plasmo.com/) project bootstrapped with [`plasmo init`](https://www.npmjs.com/package/plasmo).
+# Devtools Performance Monitor
 
-## Getting Started
+Plasmoで作成したChrome DevTools拡張です。  
+DevTools内に`DEV`パネルを追加し、現在の検査対象タブのパフォーマンスメトリクスを可視化します。
 
-First, run the development server:
+## 主な機能
+
+- `JS Heap` / `Nodes` / `CPU` を0.1秒ごとにサンプリングして表示
+- 直近60サンプルのスパークライン表示
+- スロットリング未適用時でも監視は常時継続
+- CPUスロットリング設定（`1.0x`〜`20.0x`）
+- Networkエミュレーション（Latency / Download / Upload / Offline）
+- スロットリング適用・解除とエラーメッセージ表示
+
+## 技術スタック
+
+- [Plasmo](https://docs.plasmo.com/)
+- TypeScript
+- Chrome DevTools API / Chrome Debugger Protocol
+
+## セットアップ
 
 ```bash
+pnpm install
 pnpm dev
-# or
-npm run dev
 ```
 
-Open your browser and load the appropriate development build. For example, if you are developing for the chrome browser, using manifest v3, use: `build/chrome-mv3-dev`.
+`pnpm dev`実行後、Chromeの拡張機能画面で`build/chrome-mv3-dev`を「パッケージ化されていない拡張機能を読み込む」から読み込んでください。
 
-You can start editing the popup by modifying `popup.tsx`. It should auto-update as you make changes. To add an options page, simply add a `options.tsx` file to the root of the project, with a react component default exported. Likewise to add a content page, add a `content.ts` file to the root of the project, importing some module and do some logic, then reload the extension on your browser.
+## 使い方
 
-For further guidance, [visit our Documentation](https://docs.plasmo.com/)
+1. 計測したいページを開く
+2. そのページでDevToolsを開き、`DEV`タブを選択
+3. 監視は自動開始される
+4. 必要に応じてCPU/Network設定を入力し、`Apply Throttling`を押す
+5. スロットリング解除時は`Reset Throttling`を押す
 
-## Making production build
+## スクリプト
 
-Run the following:
+- `pnpm dev`: 開発ビルド（`build/chrome-mv3-dev`）
+- `pnpm build`: 本番ビルド（`build/chrome-mv3-prod`）
+- `pnpm package`: 配布用パッケージ作成
 
-```bash
-pnpm build
-# or
-npm run build
+## プロジェクト構成
+
+```text
+src/
+  devtools.tsx
+  devtools/
+    entities/performance/model/metrics.ts
+    features/performance-monitor/model/performance-monitor-client.ts
+    pages/devtools-panel/model/devtools-panel-controller.ts
+    widgets/performance-dashboard/ui/performance-dashboard-widget.ts
+devtools/
+  panel.html
 ```
 
-This should create a production bundle for your extension, ready to be zipped and published to the stores.
+## 注意点
 
-## Submit to the webstores
-
-The easiest way to deploy your Plasmo extension is to use the built-in [bpp](https://bpp.browser.market) GitHub action. Prior to using this action however, make sure to build your extension and upload the first version to the store to establish the basic credentials. Then, simply follow [this setup instruction](https://docs.plasmo.com/framework/workflows/submit) and you should be on your way for automated submission!
+- 計測とスロットリングは`chrome.debugger`権限を使って実行されます。
+- サンプル開始直後はCPU値が`N/A`になることがあります（差分計算の初期化のため）。
+- `Reset Throttling`押下時、CPU/Networkエミュレーションはベストエフォートで解除されます。

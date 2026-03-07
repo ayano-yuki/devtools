@@ -13,6 +13,7 @@ const toErrorMessage = (error: unknown): string => {
 
 export class DevtoolsPanelController {
   private monitorClient: PerformanceMonitorClient | null = null
+  private monitoredTabId: number | null = null
   private readonly dashboardWidget: PerformanceDashboardWidget
   private readonly throttleForm: HTMLFormElement
   private readonly cpuRateInput: HTMLInputElement
@@ -23,17 +24,20 @@ export class DevtoolsPanelController {
   private readonly startButton: HTMLButtonElement
   private readonly stopButton: HTMLButtonElement
   private isRefreshing = false
+  private isUpdatingThrottling = false
   private isMonitoring = false
+  private isThrottlingActive = false
+  private activeThrottlingConfig: MonitorThrottlingConfig | null = null
   private monitorSessionId = 0
   private controlsBound = false
 
   private readonly handleStartSubmit = (event: Event): void => {
     event.preventDefault()
-    void this.refresh()
+    void this.applyThrottlingFromInputs()
   }
 
   private readonly handleStopClick = (): void => {
-    void this.stopMonitoring()
+    void this.clearThrottling()
   }
 
   constructor(
@@ -66,12 +70,21 @@ export class DevtoolsPanelController {
     this.updateControlState()
     this.monitorSessionId += 1
     const currentSessionId = this.monitorSessionId
-    const throttlingConfig = this.readThrottlingConfig()
-    this.dashboardWidget.reset()
+    const tabId = this.getCurrentTabId()
+    const shouldRestartMonitor =
+      this.monitorClient === null || this.monitoredTabId !== tabId
 
     try {
+      if (!shouldRestartMonitor) {
+        this.isMonitoring = true
+        return
+      }
+
+      this.dashboardWidget.reset()
+
       const previousClient = this.monitorClient
       this.monitorClient = null
+      this.monitoredTabId = null
       if (previousClient) {
         await previousClient.stop()
       }
@@ -81,16 +94,15 @@ export class DevtoolsPanelController {
         return
       }
 
-      const nextClient = this.createMonitorClient(
-        this.getCurrentTabId(),
-        currentSessionId
-      )
+      const nextClient = this.createMonitorClient(tabId, currentSessionId)
       this.monitorClient = nextClient
+      this.monitoredTabId = tabId
 
-      const started = await nextClient.start(throttlingConfig)
+      const started = await nextClient.start()
       if (!started) {
         if (this.monitorClient === nextClient) {
           this.monitorClient = null
+          this.monitoredTabId = null
         }
         this.isMonitoring = false
         return
@@ -100,14 +112,22 @@ export class DevtoolsPanelController {
         await nextClient.stop()
         if (this.monitorClient === nextClient) {
           this.monitorClient = null
+          this.monitoredTabId = null
         }
         this.isMonitoring = false
         return
       }
 
       this.isMonitoring = true
+      this.isThrottlingActive = false
+
+      if (this.activeThrottlingConfig) {
+        await nextClient.setThrottling(this.activeThrottlingConfig)
+        this.isThrottlingActive = true
+      }
     } catch (error) {
       this.monitorClient = null
+      this.monitoredTabId = null
       this.isMonitoring = false
       this.dashboardWidget.setError(
         `Failed to refresh performance monitoring. ${toErrorMessage(error)}`
@@ -130,7 +150,9 @@ export class DevtoolsPanelController {
       await this.monitorClient.stop()
       this.monitorClient = null
     }
+    this.monitoredTabId = null
     this.isMonitoring = false
+    this.isThrottlingActive = false
     this.updateControlState()
   }
 
@@ -176,15 +198,81 @@ export class DevtoolsPanelController {
   }
 
   private updateControlState(): void {
-    this.startButton.disabled = this.isRefreshing
-    this.stopButton.disabled = this.isRefreshing || !this.isMonitoring
+    const isBusy = this.isRefreshing || this.isUpdatingThrottling
 
-    const disableInputs = this.isRefreshing
+    this.startButton.disabled = isBusy || !this.isMonitoring
+    this.stopButton.disabled =
+      isBusy || !this.isMonitoring || !this.isThrottlingActive
+
+    const disableInputs = isBusy
     this.cpuRateInput.disabled = disableInputs
     this.latencyInput.disabled = disableInputs
     this.downloadInput.disabled = disableInputs
     this.uploadInput.disabled = disableInputs
     this.offlineInput.disabled = disableInputs
+  }
+
+  private async applyThrottlingFromInputs(): Promise<void> {
+    if (this.isUpdatingThrottling) {
+      return
+    }
+
+    if (!this.monitorClient || !this.isMonitoring) {
+      await this.refresh()
+    }
+
+    if (!this.monitorClient) {
+      this.dashboardWidget.setError("Failed to apply throttling. Monitoring is unavailable.")
+      return
+    }
+
+    this.isUpdatingThrottling = true
+    this.updateControlState()
+
+    try {
+      const throttlingConfig = this.readThrottlingConfig()
+      this.activeThrottlingConfig = throttlingConfig
+      await this.monitorClient.setThrottling(throttlingConfig)
+      this.isThrottlingActive = true
+      this.dashboardWidget.setError(null)
+    } catch (error) {
+      this.dashboardWidget.setError(
+        `Failed to apply throttling. ${toErrorMessage(error)}`
+      )
+    } finally {
+      this.isUpdatingThrottling = false
+      this.updateControlState()
+    }
+  }
+
+  private async clearThrottling(): Promise<void> {
+    if (this.isUpdatingThrottling) {
+      return
+    }
+
+    if (!this.monitorClient || !this.isMonitoring) {
+      this.activeThrottlingConfig = null
+      this.isThrottlingActive = false
+      this.updateControlState()
+      return
+    }
+
+    this.isUpdatingThrottling = true
+    this.updateControlState()
+
+    try {
+      await this.monitorClient.clearThrottling()
+      this.activeThrottlingConfig = null
+      this.isThrottlingActive = false
+      this.dashboardWidget.setError(null)
+    } catch (error) {
+      this.dashboardWidget.setError(
+        `Failed to clear throttling. ${toErrorMessage(error)}`
+      )
+    } finally {
+      this.isUpdatingThrottling = false
+      this.updateControlState()
+    }
   }
 
   private readThrottlingConfig(): MonitorThrottlingConfig {
