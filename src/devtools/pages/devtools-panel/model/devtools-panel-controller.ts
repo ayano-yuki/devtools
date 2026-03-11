@@ -277,14 +277,30 @@ export class DevtoolsPanelController {
 
   private readThrottlingConfig(): MonitorThrottlingConfig {
     return {
-      cpuRate: this.readBoundedNumber(this.cpuRateInput, 1, 20, 1),
+      cpuRate: this.readMinNumber(this.cpuRateInput, 1, 1),
       network: {
         offline: this.offlineInput.checked,
-        latencyMs: this.readBoundedNumber(this.latencyInput, 0, 120_000, 0),
+        latencyMs: this.readMinNumber(this.latencyInput, 0, 0),
         downloadKbps: this.readOptionalPositiveNumber(this.downloadInput),
         uploadKbps: this.readOptionalPositiveNumber(this.uploadInput)
       }
     }
+  }
+
+  private readMinNumber(
+    input: HTMLInputElement,
+    min: number,
+    fallback: number
+  ): number {
+    const parsed = Number(input.value)
+    if (!Number.isFinite(parsed)) {
+      input.value = String(fallback)
+      return fallback
+    }
+
+    const normalized = Math.round(Math.max(min, parsed))
+    input.value = String(normalized)
+    return normalized
   }
 
   private readBoundedNumber(
@@ -312,7 +328,7 @@ export class DevtoolsPanelController {
       return null
     }
 
-    const normalized = Math.min(1_000_000, Math.round(parsed))
+    const normalized = Math.round(parsed)
     input.value = String(normalized)
     return normalized
   }
