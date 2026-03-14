@@ -44,11 +44,16 @@
     "permissions": [
       "debugger",
       "scripting",
-      "tabs"
+      "tabs",
+      "storage"
     ],
     "host_permissions": [
       "http://*/*",
       "https://*/*"
-    ]
+    ],
+    "options_ui": {
+      "page": "options.html",
+      "open_in_tab": true
+    }
   }
 }

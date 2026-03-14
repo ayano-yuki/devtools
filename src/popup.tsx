@@ -12,6 +12,10 @@ function IndexPopup() {
   const [domInfo, setDomInfo] = useState<DOMInfo | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const openOptions = async () => {
+    await chrome.runtime.openOptionsPage()
+  }
+
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 Bytes'
     const k = 1024
@@ -146,20 +150,35 @@ function IndexPopup() {
         marginBottom: 16
       }}>
         <h3 style={{ margin: 0, color: '#24292e' }}>🔧 Dev Kits</h3>
-        <button 
-          onClick={getDOMInfo}
-          style={{
-            padding: '6px 12px',
-            backgroundColor: '#0366d6',
-            color: 'white',
-            border: 'none',
-            borderRadius: 6,
-            cursor: 'pointer',
-            fontSize: '12px'
-          }}
-        >
-          Refresh
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button 
+            onClick={getDOMInfo}
+            style={{
+              padding: '6px 12px',
+              backgroundColor: '#0366d6',
+              color: 'white',
+              border: 'none',
+              borderRadius: 6,
+              cursor: 'pointer',
+              fontSize: '12px'
+            }}
+          >
+            Refresh
+          </button>
+          <button
+            onClick={openOptions}
+            style={{
+              padding: '6px 12px',
+              backgroundColor: '#fff',
+              color: '#24292e',
+              border: '1px solid #d0d7de',
+              borderRadius: 6,
+              cursor: 'pointer',
+              fontSize: '12px'
+            }}>
+            Options
+          </button>
+        </div>
       </div>
 
       {domInfo?.error ? (
