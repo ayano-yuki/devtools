@@ -14,12 +14,14 @@ export const config: PlasmoCSConfig = {
 
 const createInjectedScript = (
   userAgent: string,
-  localStorageItems: LocalStorageItem[]
+  localStorageItems: LocalStorageItem[],
+  overwriteExistingLocalStorage: boolean
 ) => `
 (() => {
   try {
     const fixedUserAgent = ${JSON.stringify(userAgent)};
     const storageItems = ${JSON.stringify(localStorageItems)};
+    const overwriteExisting = ${JSON.stringify(overwriteExistingLocalStorage)};
 
     if (fixedUserAgent) {
       const userAgentGetter = () => fixedUserAgent;
@@ -45,7 +47,14 @@ const createInjectedScript = (
           continue;
         }
         const value = typeof item.value === "string" ? item.value : String(item.value ?? "");
-        window.localStorage.setItem(item.key, value);
+
+        try {
+          const hasExisting = window.localStorage.getItem(item.key) !== null;
+          if (hasExisting && !overwriteExisting) {
+            continue;
+          }
+          window.localStorage.setItem(item.key, value);
+        } catch (_) {}
       }
     }
   } catch (_) {}
@@ -76,14 +85,18 @@ const applyOverridesForCurrentPage = async () => {
       return
     }
 
-    if (!matchesTargetUrl(settings.targetUrlPattern, window.location.href)) {
+    const matchedRule = settings.rules.find(
+      (rule) => rule.enabled && matchesTargetUrl(rule.targetUrlPattern, window.location.href)
+    )
+    if (!matchedRule) {
       return
     }
 
     injectToPageContext(
       createInjectedScript(
-        settings.userAgent,
-        settings.localStorageItems
+        matchedRule.userAgent,
+        matchedRule.localStorageItems,
+        matchedRule.overwriteExistingLocalStorage
       )
     )
   } catch {
